@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Conn3x
+        env: &gh
+          GH_TOKEN: ${{ github.token }}
+        run: &install |
+          tag=$(gh release view -R conn3xorg/conn3x --json tagName -q .tagName)
+          file="conn3x_${tag#v}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/$file"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/checksums.txt"
+          grep " $file\$" checksums.txt | sha256sum -c -
+          mkdir -p bin && tar -xzf "$file" -C bin conn3x
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: conn3x version
+      - run: conn3x fmt -check -recursive
+      - name: Validate
+        run: conn3x init -backend=false && conn3x validate
+      - name: Validate the example
+        working-directory: examples/local
+        run: conn3x init -backend=false && conn3x validate
+
+  e2e:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky10, fedora45, ubuntu2404, debian13]
+    name: e2e (${{ matrix.distro }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The test host images live in the Conn3x repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: conn3xorg/conn3x
+          ref: main
+          path: conn3x
+          persist-credentials: false
+          sparse-checkout: test/images
+      - name: Install Conn3x
+        env: *gh
+        run: *install
+      - name: Start the ${{ matrix.distro }} host
+        working-directory: examples/local
+        env:
+          CONTAINERFILE: ${{ github.workspace }}/conn3x/test/images/${{ matrix.distro }}/Containerfile
+        run: ./up.sh
+      - name: Apply, then plan again with no changes
+        working-directory: examples/local
+        env:
+          TF_VAR_admin_password: ci-only-admin-pass-1
+        run: |
+          conn3x init
+          conn3x apply -auto-approve
+          conn3x plan -detailed-exitcode
+      # The bootstrap admin gets a token from the master realm, a wrong
+      # password is refused, and a realm created over the admin API reads
+      # back. After a restart the realm is still there, so the dev-file
+      # database lives outside the install.
+      - name: Get a token, create a realm, restart and read it back
+        run: |
+          cat > check.sh <<'EOF'
+          set -eu
+          u=http://127.0.0.1:8080
+          curl -sSf http://127.0.0.1:9000/health/ready | grep -q '"status": *"UP"'
+          [ "$(stat -c '%U:%G %a' /etc/keycloak/keycloak.conf)" = "root:keycloak 640" ]
+          [ "$(stat -c '%U:%G %a' /etc/keycloak/bootstrap-admin.env)" = "root:root 600" ]
+          tok() {
+            curl -sS $u/realms/master/protocol/openid-connect/token \
+              -d grant_type=password -d client_id=admin-cli -d username=admin \
+              --data-urlencode "password=$1"
+          }
+          tok wrong-password | grep -q '"error":"invalid_grant"'
+          t=$(tok ci-only-admin-pass-1 | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+          [ -n "$t" ]
+          if [ "${1:-}" = create ]; then
+            [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $t" \
+              -H 'Content-Type: application/json' $u/admin/realms -d '{"realm":"ci","enabled":true}')" = 201 ]
+          fi
+          curl -sSf -H "Authorization: Bearer $t" $u/admin/realms/ci | grep -q '"realm":"ci"'
+          test -f /var/lib/keycloak/h2/keycloakdb.mv.db
+          EOF
+          podman exec -i circuit-keycloak sh -s create < check.sh
+          podman exec circuit-keycloak systemctl restart keycloak
+          podman exec circuit-keycloak sh -c 'for _ in $(seq 300); do curl -sf -o /dev/null http://127.0.0.1:9000/health/ready && exit 0; sleep 1; done; exit 1'
+          podman exec -i circuit-keycloak sh < check.sh
+      - name: Plan again after the restart
+        working-directory: examples/local
+        env:
+          TF_VAR_admin_password: ci-only-admin-pass-1
+        run: conn3x plan -detailed-exitcode
+      - name: Clean up
+        if: always()
+        working-directory: examples/local
+        run: ./down.sh
