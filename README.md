@@ -1,5 +1,7 @@
 # circuit-keycloak
 
+[![Conn3x grade](https://conn3x.org/circuits/keycloak/grade.svg)](https://conn3x.org/circuits/keycloak/grade)
+
 A Conn3x circuit that runs [Keycloak](https://www.keycloak.org), the open source identity and access management server, on your own hosts. Single sign-on, OpenID Connect and SAML for your apps, with the users and sessions on a machine you run.
 
 It downloads a pinned Keycloak release from GitHub, checks its SHA-256, unpacks it into `/opt/keycloak/VERSION` with `/opt/keycloak/current` pointing at it, and runs it under systemd as a `keycloak` user on OpenJDK from your distribution. You set the hostname, how it listens and which database it uses; the circuit writes `/etc/keycloak/keycloak.conf` from them, runs `kc.sh build` when an option Keycloak bakes into the install changes, and restarts it with `start --optimized`. On the first start, Keycloak creates a temporary admin in the master realm from `admin_username` and `admin_password`.
