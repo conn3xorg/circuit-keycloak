@@ -20,7 +20,7 @@ variable "keycloak_admin_password" {
 }
 
 module "keycloak" {
-  source = "github.com/conn3xorg/circuit-keycloak?ref=v0.1.1"
+  source = "github.com/conn3xorg/circuit-keycloak?ref=v0.2.0"
 
   hosts                = { auth1 = "203.0.113.10" }
   ssh_private_key_file = "~/.ssh/id_ed25519"
@@ -46,7 +46,7 @@ The database and role must exist; [circuit-postgres](https://github.com/conn3xor
 
 ```hcl
 module "postgres" {
-  source = "github.com/conn3xorg/circuit-postgres?ref=v0.2.0"
+  source = "github.com/conn3xorg/circuit-postgres?ref=v0.3.0"
 
   hosts          = { auth1 = "203.0.113.10" }
   users          = ["keycloak"]
@@ -55,7 +55,7 @@ module "postgres" {
 }
 
 module "keycloak" {
-  source     = "github.com/conn3xorg/circuit-keycloak?ref=v0.1.1"
+  source     = "github.com/conn3xorg/circuit-keycloak?ref=v0.2.0"
   depends_on = [module.postgres]
 
   hosts             = { auth1 = { address = "203.0.113.10", os = "ubuntu" } }
@@ -121,7 +121,7 @@ sha256sum keycloak-$v.tar.gz
 
 ```hcl
 module "keycloak" {
-  source = "github.com/conn3xorg/circuit-keycloak?ref=v0.1.1"
+  source = "github.com/conn3xorg/circuit-keycloak?ref=v0.2.0"
 
   # ...
   keycloak_version = "26.8.1"
