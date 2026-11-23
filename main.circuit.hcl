@@ -266,8 +266,8 @@ circuit "keycloak" {
   # circuit, and a plan straight after the apply would find it still
   # starting. On a first apply it's what starts Keycloak.
   step "restart" {
-    command {
-      command = "systemctl daemon-reload && systemctl restart keycloak"
+    service_action {
+      name = "keycloak"
       triggers = {
         build   = conn3x_command.keycloak__build[each.key].revision
         current = conn3x_link.keycloak__current[each.key].revision
@@ -292,7 +292,7 @@ circuit "keycloak" {
     command {
       command  = "for _ in $(seq 300); do curl -sfk -o /dev/null ${local.ready_url} && exit 0; sleep 1; done; echo 'Keycloak did not report ready in 5 minutes. See journalctl -u keycloak.' >&2; exit 1"
       unless   = "curl -sfk -o /dev/null ${local.ready_url}"
-      triggers = { restart = conn3x_command.keycloak__restart[each.key].revision }
+      triggers = { restart = conn3x_service_action.keycloak__restart[each.key].revision }
     }
   }
 }
