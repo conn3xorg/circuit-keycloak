@@ -169,7 +169,7 @@ The new release unpacks beside the old one, gets built, and `/opt/keycloak/curre
 
 ## Requirements
 
-Requires Conn3x v0.6.7 or later, systemd on each host, and outbound HTTPS to github.com and your distribution's mirrors. Each release takes about 370 MB of disk, tarball included. amd64 and arm64.
+Requires Conn3x v0.28.0 or later, systemd on each host, and outbound HTTPS to github.com and your distribution's mirrors. Each release takes about 370 MB of disk, tarball included. amd64 and arm64.
 
 ## Tested on
 
